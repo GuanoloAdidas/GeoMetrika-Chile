@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 # =========================================================
 # 1. CONFIGURACION Y ESTILO CSS
@@ -24,21 +25,34 @@ st.markdown("""
 @st.cache_data
 def cargar_datos():
     try:
+        # Carga de archivos (Asegúrate de que los nombres coincidan exactamente)
         df_temp = pd.read_csv("MAESTRO_TEMPERATURAS_FINAL_COMPLETO.csv")
         df_lluvia = pd.read_csv("MAESTRO_PRECIPITACIONES_FINAL_COMPLETO.csv")
         df_coords = pd.read_csv("Coordenadas.csv") 
 
+        # Conversión de fechas
         df_temp['fecha'] = pd.to_datetime(dict(year=df_temp['Ano'], month=df_temp['Mes'], day=df_temp['Dia']))
         df_lluvia['fecha'] = pd.to_datetime(dict(year=df_lluvia['Ano'], month=df_lluvia['Mes'], day=df_lluvia['Dia']))
 
+        # Unión de datos
         df_clima = pd.merge(df_temp, df_lluvia, on=['fecha', 'CodigoNacional', 'NombreEstacion'], how='inner')
         df_coords_clean = df_coords[['CodigoNacional', 'Latitud', 'Longitud', 'Altura']].drop_duplicates()
         df_final = pd.merge(df_clima, df_coords_clean, on='CodigoNacional', how='left')
 
+        # Ingeniería de variables temporales
         df_final['Year'] = df_final['fecha'].dt.year
         df_final['DayOfYear'] = df_final['fecha'].dt.dayofyear
+        
+        # --- CÁLCULOS ÉTICOS (Pre-procesamiento) ---
+        # 1. Media histórica por día del año (Base de comparación)
+        df_final['Media_Hist_Max'] = df_final.groupby(['NombreEstacion', 'DayOfYear'])['T.Maxima'].transform('mean')
+        # 2. Anomalía (Diferencia real vs promedio)
+        df_final['Anomalia'] = df_final['T.Maxima'] - df_final['Media_Hist_Max']
+        
         return df_final
-    except: return None
+    except Exception as e:
+        st.error(f"Error al cargar los datos: {e}")
+        return None
 
 df = cargar_datos()
 
@@ -49,7 +63,7 @@ if df is not None:
     # =========================================================
     # 2. SELECCION DE ESTACION Y AÑO
     # =========================================================
-    st.title("Red Meteorologica Nacional: Inteligencia Climatica")
+    st.title("Red Meteorológica Nacional: Inteligencia Climatica")
     
     col_map, col_metrics = st.columns([2.5, 1])
 
@@ -60,89 +74,125 @@ if df is not None:
         fig_map.update_layout(mapbox_style="carto-darkmatter", margin={"r":0,"t":0,"l":0,"b":0})
         event_data = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun")
 
+    # Lógica de selección (Mapa o Sidebar)
     if event_data and len(event_data.selection.points) > 0:
         estacion_sel = event_data.selection.points[0]['hovertext']
     else:
-        estacion_sel = st.sidebar.selectbox("Buscar Estacion:", sorted(df['NombreEstacion'].unique()))
+        estacion_sel = st.sidebar.selectbox("Buscar Estación:", sorted(df['NombreEstacion'].unique()))
 
     df_estacion = df[df['NombreEstacion'] == estacion_sel].copy()
     years = sorted(df_estacion['Year'].unique(), reverse=True)
-    year_sel = st.sidebar.segmented_control("Año de Analisis:", options=years, default=years[0])
+    year_sel = st.sidebar.segmented_control("Año de Análisis:", options=years, default=years[0])
     df_year = df_estacion[df_estacion['Year'] == year_sel]
 
+    # --- INDICADORES ÉTICOS ---
     with col_metrics:
         st.subheader("Indicadores de la Estación")
-        st.metric("Temperatura Máxima Media", f"{df_year['T.Maxima'].mean():.1f}C")
-        st.metric("Precipitación Acumulada del Periodo", f"{df_year['SumaDiaria'].sum():.1f} mm")
-        st.metric("Elevacion", f"{df_year['Altura'].iloc[0]}m")
         
+        # Anomalía Media: ¿Es este año más caliente que el promedio histórico?
+        anom_media = df_year['Anomalia'].mean()
+        st.metric("Anomalía Térmica Media", f"{anom_media:+.2f} °C", 
+                  delta=f"{anom_media:.2f} °C vs Histórico", delta_color="inverse")
+
+        # Precipitación
+        st.metric("Precipitación Acumulada", f"{df_year['SumaDiaria'].sum():.1f} mm")
+        
+        # Elevación
+        st.metric("Elevación", f"{df_year['Altura'].iloc[0]}m")
+        
+        # Alerta de Extremos (Honestidad sobre el récord)
         dia_max = df_year.loc[df_year['T.Maxima'].idxmax()]
-        st.warning(f"Record {year_sel}: {dia_max['T.Maxima']}C el {dia_max['fecha'].strftime('%d/%m')}")
+        p95_hist = df_estacion['T.Maxima'].quantile(0.95)
+        st.warning(f"Récord {year_sel}: {dia_max['T.Maxima']}°C ({dia_max['fecha'].strftime('%d/%m')}). "
+                   f"El umbral de calor extremo (P95) es {p95_hist:.1f}°C.")
 
     # =========================================================
-    # 3. PESTAÑAS ACUMULATIVAS
+    # 3. PESTAÑAS DE ANÁLISIS
     # =========================================================
     t1, t2, t3, t4, t5 = st.tabs([
-        "Tendencia Anual", 
-        "Regresion Historica", 
-        "Variabilidad Estacional", 
-        "Analisis de Impacto",
-        "Anomalias Historicas"
+        "Rango y Variabilidad", 
+        "Tendencias de Largo Plazo", 
+        "Distribución Estadística", 
+        "Impacto Hídrico",
+        "Anomalías Diarias"
     ])
 
     with t1:
-        st.subheader(f"Variabilidad Térmica Diaria - {year_sel}")
+        st.subheader(f"Dinámica Térmica e Incertidumbre - {year_sel}")
         fig_line = go.Figure()
-        fig_line.add_trace(go.Scatter(x=df_year['fecha'], y=df_year['T.Maxima'], name="Maxima Diaria", line=dict(color=ACENTO_NEON, width=1)))
-        fig_line.add_trace(go.Scatter(x=df_year['fecha'], y=df_year['T.Maxima'].rolling(7).mean(), name="Media Movil 7d", line=dict(color="#FFB703", width=2)))
+        
+        # Banda de Normalidad (Media Histórica)
+        fig_line.add_trace(go.Scatter(
+            x=df_year['fecha'], y=df_year['Media_Hist_Max'],
+            name="Normal Histórica",
+            line=dict(color="rgba(255, 255, 255, 0.3)", dash="dash")
+        ))
+        
+        # Datos Reales
+        fig_line.add_trace(go.Scatter(
+            x=df_year['fecha'], y=df_year['T.Maxima'], 
+            name="Máxima Diaria", 
+            line=dict(color=ACENTO_NEON, width=1.5)
+        ))
+        
+        # Media Móvil para suavizar el "ruido"
+        fig_line.add_trace(go.Scatter(
+            x=df_year['fecha'], y=df_year['T.Maxima'].rolling(7).mean(), 
+            name="Tendencia 7 días", 
+            line=dict(color="#FFB703", width=2)
+        ))
+        
         fig_line.update_layout(template="plotly_dark", hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0))
         st.plotly_chart(fig_line, use_container_width=True)
+        st.caption("La línea punteada representa el promedio esperado. Los picos por encima de ella indican exceso de calor respecto a la historia.")
 
     with t2:
-        st.subheader("Cambios climaticos en la estacion")
+        st.subheader("Análisis de Tendencia Interanual")
         c1, c2 = st.columns(2)
         with c1:
-            st.write("**Tendencia de Temperaturas Maximas Anuales**")
+            st.write("**Desplazamiento de la Media Anual**")
             df_tendencia_anual = df_estacion.groupby('Year')['T.Maxima'].mean().reset_index()
-            
             fig_trend = px.scatter(df_tendencia_anual, x="Year", y="T.Maxima", 
                                    trendline="ols", 
-                                   title="Promedio Anual de Maximas",
                                    color_discrete_sequence=[ACENTO_NEON],
                                    template="plotly_dark")
             st.plotly_chart(fig_trend, use_container_width=True)
-            st.info("Esta linea muestra si la temperatura promedio ha subido o bajado en los ultimos años.")
             
         with c2:
-            st.write("**Relacion Lluvia vs Calor (Todos los años)**")
+            st.write("**Correlación Térmico-Hídrica**")
             fig_scat = px.scatter(df_estacion, x="T.Maxima", y="SumaDiaria", color="Year", 
-                                  size="SumaDiaria", opacity=0.6,
+                                  size="SumaDiaria", opacity=0.4,
                                   color_continuous_scale=PALETA_APP, template="plotly_dark")
             st.plotly_chart(fig_scat, use_container_width=True)
 
     with t3:
-        st.subheader("Distribucion y Variabilidad")
-        fig_hist = px.histogram(df_estacion, x="T.Maxima", color="Year", marginal="box", 
-                                color_discrete_sequence=PALETA_APP, template="plotly_dark")
+        st.subheader("Asimetría y Extremos Térmicos")
+        # Comparar el año seleccionado contra el total histórico
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Histogram(x=df_estacion['T.Maxima'], name="Histórico Total", marker_color="#333", opacity=0.5))
+        fig_hist.add_trace(go.Histogram(x=df_year['T.Maxima'], name=f"Año {year_sel}", marker_color=ACENTO_NEON, opacity=0.7))
+        
+        fig_hist.update_layout(barmode='overlay', template="plotly_dark")
         st.plotly_chart(fig_hist, use_container_width=True)
+        st.info("Si la distribución del año actual está 'desplazada' a la derecha del bloque gris, hay un calentamiento sistemático.")
 
     with t4:
-        st.subheader("Efecto de la lluvia en la temperatura")
-        df_estacion['Estado'] = df_estacion['SumaDiaria'].apply(lambda x: 'Dia Lluvioso' if x > 0.1 else 'Dia Seco')
-        fig_violin = px.violin(df_estacion, y="T.Maxima", x="Estado", color="Estado", box=True, points="all",
-                               color_discrete_map={'Dia Lluvioso': '#00B4D8', 'Dia Seco': '#FFB703'}, template="plotly_dark")
+        st.subheader("Análisis de Estrés Hídrico")
+        df_estacion['Estado'] = df_estacion['SumaDiaria'].apply(lambda x: 'Día Lluvioso' if x > 0.1 else 'Día Seco')
+        fig_violin = px.violin(df_estacion, y="T.Maxima", x="Estado", color="Estado", box=True, points="outliers",
+                               color_discrete_map={'Día Lluvioso': '#00B4D8', 'Día Seco': '#FFB703'}, template="plotly_dark")
         st.plotly_chart(fig_violin, use_container_width=True)
 
     with t5:
-        st.subheader("Anomalias: Desviacion del Promedio Historico")
-        media_historica = df_estacion.groupby('DayOfYear')['T.Maxima'].transform('mean')
-        df_estacion['Anomalia'] = df_estacion['T.Maxima'] - media_historica
-        df_anom_year = df_estacion[df_estacion['Year'] == year_sel]
-        
-        fig_anom = px.scatter(df_anom_year, x="fecha", y="Anomalia", color="Anomalia",
-                              color_continuous_scale="RdBu_r", template="plotly_dark")
-        fig_anom.add_hline(y=0, line_dash="dash", line_color="white")
+        st.subheader("Mapa de Calor de Anomalías (Z-Score)")
+        # Gráfico de barras coloreado por anomalía (rojo/azul)
+        fig_anom = px.bar(df_year, x="fecha", y="Anomalia", color="Anomalia",
+                          color_continuous_scale="RdBu_r", 
+                          range_color=[-5, 5], # Forzamos escala para ver contrastes
+                          template="plotly_dark")
+        fig_anom.add_hline(y=0, line_dash="solid", line_color="white")
         st.plotly_chart(fig_anom, use_container_width=True)
+        st.write("Las barras rojas indican días más calientes de lo normal; las azules, más fríos.")
 
 else:
-    st.error("No se pudieron cargar los datos. Revisa los nombres de los archivos CSV.")
+    st.error("Error crítico: No se pudieron cargar los datos. Verifica que los archivos CSV estén en la carpeta raíz de GitHub.")
