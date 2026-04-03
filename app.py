@@ -71,9 +71,9 @@ if df is not None:
     df_year = df_estacion[df_estacion['Year'] == year_sel]
 
     with col_metrics:
-        st.subheader("Estadisticas Clave")
-        st.metric("Max. Promedio", f"{df_year['T.Maxima'].mean():.1f}C")
-        st.metric("PP Acumulada", f"{df_year['SumaDiaria'].sum():.1f} mm")
+        st.subheader("Indicadores de la Estación")
+        st.metric("Temperatura Máxima Media", f"{df_year['T.Maxima'].mean():.1f}C")
+        st.metric("Precipitación Acumulada del Periodo", f"{df_year['SumaDiaria'].sum():.1f} mm")
         st.metric("Elevacion", f"{df_year['Altura'].iloc[0]}m")
         
         dia_max = df_year.loc[df_year['T.Maxima'].idxmax()]
@@ -91,7 +91,7 @@ if df is not None:
     ])
 
     with t1:
-        st.subheader(f"Evolucion Diaria - {year_sel}")
+        st.subheader(f"Variabilidad Térmica Diaria - {year_sel}")
         fig_line = go.Figure()
         fig_line.add_trace(go.Scatter(x=df_year['fecha'], y=df_year['T.Maxima'], name="Maxima Diaria", line=dict(color=ACENTO_NEON, width=1)))
         fig_line.add_trace(go.Scatter(x=df_year['fecha'], y=df_year['T.Maxima'].rolling(7).mean(), name="Media Movil 7d", line=dict(color="#FFB703", width=2)))
