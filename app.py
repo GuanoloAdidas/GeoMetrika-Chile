@@ -26,7 +26,7 @@ def cargar_datos():
     try:
         df_temp = pd.read_csv("MAESTRO_TEMPERATURAS_FINAL_COMPLETO.csv")
         df_lluvia = pd.read_csv("MAESTRO_PRECIPITACIONES_FINAL_COMPLETO.csv")
-        df_coords = pd.read_csv("coordenadas.csv") 
+        df_coords = pd.read_csv("Coordenadas.csv") 
 
         df_temp['fecha'] = pd.to_datetime(dict(year=df_temp['Ano'], month=df_temp['Mes'], day=df_temp['Dia']))
         df_lluvia['fecha'] = pd.to_datetime(dict(year=df_lluvia['Ano'], month=df_lluvia['Mes'], day=df_lluvia['Dia']))
