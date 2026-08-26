@@ -69,10 +69,10 @@ if df is not None:
 
     with col_map:
         df_mapa = df.drop_duplicates(subset=['NombreEstacion'])
-        fig_map = px.scatter_mapbox(df_mapa, lat="Latitud", lon="Longitud", hover_name="NombreEstacion",
-                                    zoom=3.8, height=450, color_discrete_sequence=[ACENTO_NEON])
-        fig_map.update_layout(mapbox_style="carto-darkmatter", margin={"r":0,"t":0,"l":0,"b":0})
-        event_data = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun")
+        fig_map = px.scatter_map(df_mapa, lat="Latitud", lon="Longitud", hover_name="NombreEstacion",
+                                 zoom=3.8, height=450, color_discrete_sequence=[ACENTO_NEON])
+        fig_map.update_layout(map_style="carto-darkmatter", margin={"r":0,"t":0,"l":0,"b":0})
+        event_data = st.plotly_chart(fig_map, on_select="rerun")
 
     # Lógica de selección (Mapa o Sidebar)
     if event_data and len(event_data.selection.points) > 0:
@@ -143,7 +143,7 @@ if df is not None:
         ))
         
         fig_line.update_layout(template="plotly_dark", hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0))
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_line)
         st.caption("La línea punteada representa el promedio esperado. Los picos por encima de ella indican exceso de calor respecto a la historia.")
 
     with t2:
@@ -156,14 +156,14 @@ if df is not None:
                                    trendline="ols", 
                                    color_discrete_sequence=[ACENTO_NEON],
                                    template="plotly_dark")
-            st.plotly_chart(fig_trend, use_container_width=True)
+            st.plotly_chart(fig_trend)
             
         with c2:
             st.write("**Correlación Térmico-Hídrica**")
             fig_scat = px.scatter(df_estacion, x="T.Maxima", y="SumaDiaria", color="Year", 
                                   size="SumaDiaria", opacity=0.4,
                                   color_continuous_scale=PALETA_APP, template="plotly_dark")
-            st.plotly_chart(fig_scat, use_container_width=True)
+            st.plotly_chart(fig_scat)
 
     with t3:
         st.subheader("Asimetría y Extremos Térmicos")
@@ -173,7 +173,7 @@ if df is not None:
         fig_hist.add_trace(go.Histogram(x=df_year['T.Maxima'], name=f"Año {year_sel}", marker_color=ACENTO_NEON, opacity=0.7))
         
         fig_hist.update_layout(barmode='overlay', template="plotly_dark")
-        st.plotly_chart(fig_hist, use_container_width=True)
+        st.plotly_chart(fig_hist)
         st.info("Si la distribución del año actual está 'desplazada' a la derecha del bloque gris, hay un calentamiento sistemático.")
 
     with t4:
@@ -181,7 +181,7 @@ if df is not None:
         df_estacion['Estado'] = df_estacion['SumaDiaria'].apply(lambda x: 'Día Lluvioso' if x > 0.1 else 'Día Seco')
         fig_violin = px.violin(df_estacion, y="T.Maxima", x="Estado", color="Estado", box=True, points="outliers",
                                color_discrete_map={'Día Lluvioso': '#00B4D8', 'Día Seco': '#FFB703'}, template="plotly_dark")
-        st.plotly_chart(fig_violin, use_container_width=True)
+        st.plotly_chart(fig_violin)
 
     with t5:
         st.subheader("Mapa de Calor de Anomalías (Z-Score)")
@@ -191,7 +191,7 @@ if df is not None:
                           range_color=[-5, 5], # Forzamos escala para ver contrastes
                           template="plotly_dark")
         fig_anom.add_hline(y=0, line_dash="solid", line_color="white")
-        st.plotly_chart(fig_anom, use_container_width=True)
+        st.plotly_chart(fig_anom)
         st.write("Las barras rojas indican días más calientes de lo normal; las azules, más fríos.")
 
 else:
